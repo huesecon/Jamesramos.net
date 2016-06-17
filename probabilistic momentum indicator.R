@@ -3,13 +3,13 @@ require(PerformanceAnalytics)
 require(quantmod)
 
 #load data 
-factors <- c("IEF","HYG","USO","UUP","DBA","IWM","GLD","EEM")
+factors <- c("IEF","HYG","USO","UUP","GLD","EEM")
 benchmark <- c("SPY")
 
 getSymbols(factors,src = "yahoo")
 getSymbols(benchmark, src = "yahoo")
 
-#function for the specific t.test I will rollapply. 
+#function for the specific t.test 
 tstatFunc <- function(x) {
         t.test(x,alt = "greater", conf.level = .95)[1]
 }
@@ -21,24 +21,20 @@ for(factor in factors) {
         spy <- Return.calculate(Ad(get("SPY")))
         spyTmp <- spy[index(tmp)]
         diffRets <- tmp-spyTmp 
-        tstatTmp <- as.numeric(rollapply(diffRets,100,tstatFunc))
+        tstatTmp <- as.numeric(rollapply(diffRets,66,tstatFunc))
         tmpDF <- na.omit(cbind(diffRets,tstatTmp))
         colnames(tmpDF) <- c("TMP","TSTAT")
-        tmpDF$PROB <- pt(tmpDF$TSTAT,99)
+        tmpDF$PROB <- pt(tmpDF$TSTAT,65)
         retlist[[factor]] <- tmpDF$PROB
 }
 
 #combine into one dataframe. 
 retDF <- na.omit(do.call(cbind,retlist)) 
-colnames(retDF) <- c("IEF","HYG","USO","UUP","DBA","IWM","GLD","EEM")
+colnames(retDF) <- c("IEF","HYG","USO","UUP","GLD","EEM")
 
 #add rows to get daily total values. 
 PMI <- rowMeans(retDF)
 PMI <- xts(PMI, order.by = index(retDF))
-
-#chart the series 
-chartSeries(SPY,theme = chartTheme('white'), TA = NULL, subset = "2015-08::" )
-addTA(PMI)
 
 ###############################################################################
 #####################  Create indicator returns graph 
@@ -82,7 +78,7 @@ prepare.indicator <- function(close, indicator, roc.n, normalize=FALSE, func=mea
         #for 2 we get factor .2, and so on.  it's amazing to me how there is some matching principle at work here 
         #like it says the order of of the sequence can be made from smallest to greatest, just like the order 
         #of ee, so match by smallest to largest.  
-        ff <- factor(ee, labels=as.character(seq(0.1, .6, 0.1)))
+        ff <- factor(ee, labels=as.character(seq(0.1, 1, 0.1)))
         
         # Split the returns according to the factors
         #here we are taking the factors we developed in ee and grabing the corresponding values for our return strea
@@ -109,7 +105,7 @@ PMI.analysis <- function(close, lags=c(5), normalize=FALSE, file.path, do.plot=T
                 par(mfrow=c(length(lags), 1))
         }
         
-        ind = PMI
+        ind = dviAdjPMI
         res = list()
         raw.res = list()
         rets = list()
@@ -141,32 +137,57 @@ PMI.analysis <- function(close, lags=c(5), normalize=FALSE, file.path, do.plot=T
 }
 
 ####################################
-##################### Throwing in the LW Indicator 
+##################### make derivative indicators
 
-#LW <- function(x) {
+        #With PROXY and DVI 
         y <- get("SPY")
         colnames(y) <- c("Open","High","Low","Close","Volume","Adj")
         #get Open-Close and calc an 7 period average
         omc <- y$Open - y$Close
-        testOMC <- rollapply(omc,42,mean)
+        testOMC <- rollapply(omc,66,mean)
         #get High-low and calc a 7 period average
         hml <- y$High - y$Low
-        testHML <- rollapply(hml,42,mean)
+        testHML <- rollapply(hml,66,mean)
         #calc proxy 
         proxy <- na.omit((testOMC/testHML)*50+50)
         #return(proxy)
         #index proxy to PMI 
         proxy <- proxy[index(PMI)]
         adjPMI <- PMI * proxy 
-        dviAjdPMI <- DVI(adjPMI)[,3]
+        dviAdjPMI <- DVI(adjPMI)[,3]
         
         
-#}
+        # Just use DVI 
+        DVIPMI <- DVI(PMI)[,3]
+        
+        #chart the series 
+        chartSeries(SPY,theme = chartTheme('white'), TA = NULL, subset = "2009-08::" )
+        addTA(dviAdjPMI)
+        addTA(PMI)
+        
 
 ###this calls the analyses from above. 
 require(quantmod)
 getSymbols("SPY", from="1900-01-01")
 aa = PMI.analysis(Cl(SPY["/2009"]), lags=seq(5,12), normalize=T, file.path="DPP2.mean.png", func=mean)
+
+
+##statistics 
+count <- ifelse(PMI >= .4,1,0)
+lastYear <- sum(tail(count,n = 252))
+
+sampleSize <- 252 
+sampleRep <- 100 
+
+countRep <- c()
+
+for (i in 1:sampleRep) {
+        tmp <- sample(count,sampleSize, replace = TRUE)
+        countRep[i] <- sum(tmp)
+}
+meanCount <- mean(countRep) ## ~ 145 
+sdCount <- sd(countRep) ## ~ 7.7 
+sdAbove <- (lastYear-meanCount)/sdCount ## ~ 2.4 
 
 
 
